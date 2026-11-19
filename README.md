@@ -1,0 +1,54 @@
+# ResuMatch
+
+AI-assisted job matching: candidates upload a resume and get per-requirement match scores;
+recruiters post jobs, review applicants and move them through a hiring pipeline.
+
+## Project layout
+
+```
+index.html                 App entry page
+assets/                    App icon
+src/
+  App.jsx, main.jsx, index.css
+  presentation/
+    pages/                 Full pages: Login, Signup, CandidateDashboard, RecruiterDashboard,
+                           JobDetailsPage, CompanyProfilePage, PipelinePage, LegalPage
+    components/            Reusable UI: modals, TopHeader, NotificationBell, ShareButton,
+                           GuestHeader, SignInPrompt, ...
+      pipeline/            Pipeline board, columns, cards, drawer and dialogs
+  hooks/                   Data hooks: useJobs, useApplyToJob, usePipeline,
+                           useNotifications, ...
+  data/                    Shared constants and data: jobOptions, pipelineStages,
+                           applicationForm, jobAttachments
+    services/              Supabase / API helpers and logic: authService, apiClient,
+                           matchAnalysis, matchScoring, jobText, companyMedia, publicData, returnPath
+supabaseClient.js          Supabase client for the browser
+server.js                  Express API (deployed to Railway)
+loginLimiter.js            Sign-in attempt limits
+resumeParser.js            Resume reading with Gemini
+supabase/                  Migrations, Edge Functions and setup guide (supabase/README.md)
+scripts/                   One-off maintenance scripts
+tests/                     Node tests (npm test)
+```
+
+The server imports `src/data/jobOptions.js` and `src/data/services/matchAnalysis.js`,
+so job options and per-requirement matching share the same source across the app and API.
+
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | API on :3000 and Vite on :5173 (calls to `/api` are proxied) |
+| `npm run build` | Production frontend build into `dist/` |
+| `npm start` | Start the API (`node server.js`) |
+| `npm test` | Run the tests |
+
+Environment variables: set them in `.env` (one file at the repo root for both
+the frontend and the API). Supabase setup: see `supabase/README.md`.
+
+For Gemini, configure `GEMINI_API_KEY` and optionally `RESUMATCH_1` through
+`RESUMATCH_5` on the server (in `.env` locally and Railway Variables in production).
+At least one of these keys is required. The API tries another configured key when
+Gemini returns a rate limit, access denial, server error, or network error. Gemini
+quotas are per Google project, so keys from the same project share the same quota.
+Keep all Gemini keys and `SUPABASE_SERVICE_KEY` out of `VITE_` variables and source control.

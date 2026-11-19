@@ -1,0 +1,164 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PIPELINE_STAGES, STATUS_BY_STAGE, compareByRanking, normalizePipelineStage } from '../data/pipelineStages';
+import { listPipelineApplications, listRecruiterJobsForPipeline, subscribeToApplications, updateApplication } from '../data/services/pipelineService';
+
+export function usePipeline(recruiterId) {
+  const [applications, setApplications] = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [filters, setFilters] = useState({
+    jobId: 'all',
+    search: '',
+    minMatch: 0,
+    showArchived: false,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [announcement, setAnnouncement] = useState('');
+  const requestId = useRef(0);
+
+  const refetch = useCallback(async () => {
+    if (!recruiterId) return;
+    const currentRequest = ++requestId.current;
+    setLoading(true);
+    setError('');
+    try {
+      const [jobResult, applicationResult] = await Promise.all([
+        listRecruiterJobsForPipeline(recruiterId),
+        listPipelineApplications(recruiterId),
+      ]);
+      if (currentRequest !== requestId.current) return;
+      if (jobResult.error) throw jobResult.error;
+      if (applicationResult.error) throw applicationResult.error;
+
+      const availableJobs = (jobResult.data || []).filter((job) => filters.showArchived || !job.is_archived);
+      const availableIds = new Set(availableJobs.map((job) => job.id));
+      setJobs(availableJobs);
+      setApplications((applicationResult.data || [])
+        .filter((application) => availableIds.has(application.job_id) && application.status !== 'Withdrawn')
+        .map((application) => ({ ...application, stage: normalizePipelineStage(application) })));
+    } catch (loadError) {
+      console.error('Pipeline load error:', loadError);
+      if (currentRequest === requestId.current) setError(loadError.message || 'Unable to load the hiring pipeline.');
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false);
+    }
+  }, [filters.showArchived, recruiterId]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  useEffect(() => {
+    if (!recruiterId) return undefined;
+    return subscribeToApplications(`recruiter-pipeline-${recruiterId}`, () => refetch(), (status) => {
+      if (status === 'SUBSCRIBED') {
+        setError('');
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        setError('Live updates disconnected. Retry loading or refresh the page.');
+      }
+    });
+  }, [recruiterId, refetch]);
+
+  const updateFilter = useCallback((key, value) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  }, []);
+
+  const moveCandidate = useCallback(async (id, stage, details = {}) => {
+    const extra = typeof details === 'string' ? { reason: details } : (details || {});
+    const reason = extra.reason || '';
+    if (!PIPELINE_STAGES.some((item) => item.id === stage)) {
+      setError('Invalid pipeline stage.');
+      return false;
+    }
+    const current = applications.find((item) => item.id === id);
+    if (!current || current.stage === stage) return true;
+    const previous = current;
+    const changes = {
+      stage,
+      status: STATUS_BY_STAGE[stage],
+      rejection_reason: stage === 'rejected' ? reason.trim() || null : current.rejection_reason,
+    };
+    if (stage === 'rejected') changes.candidate_feedback = (extra.feedback || '').trim() || null;
+    if (stage === 'interview') {
+      for (const key of ['interview_at', 'interview_mode', 'interview_location', 'interview_notes']) {
+        if (key in extra) changes[key] = extra[key];
+      }
+    }
+    const updated = { ...current, ...changes, stage_updated_at: new Date().toISOString() };
+
+    setError('');
+    setApplications((items) => items.map((item) => item.id === id ? updated : item));
+    setAnnouncement(`${current.candidate_profiles?.firstName || 'Candidate'} moved to ${PIPELINE_STAGES.find((item) => item.id === stage)?.label}.`);
+    const { error: updateError } = await updateApplication(id, changes);
+
+    if (updateError) {
+      console.error('Pipeline stage update error:', updateError);
+      setApplications((items) => items.map((item) => item.id === id ? previous : item));
+      setError(updateError.message || 'Unable to move this candidate. The change was rolled back.');
+      setAnnouncement('Candidate move failed. The previous stage was restored.');
+      return false;
+    }
+    return true;
+  }, [applications]);
+
+  const updateInterview = useCallback(async (id, fields) => {
+    const previous = applications.find((item) => item.id === id);
+    if (!previous) return false;
+    setApplications((items) => items.map((item) => item.id === id ? { ...item, ...fields } : item));
+    const { error: updateError } = await updateApplication(id, fields);
+    if (updateError) {
+      setApplications((items) => items.map((item) => item.id === id ? previous : item));
+      setError(updateError.message || 'Unable to update the interview.');
+      return false;
+    }
+    return true;
+  }, [applications]);
+
+  const saveNotes = useCallback(async (id, notes) => {
+    const previous = applications.find((item) => item.id === id);
+    if (!previous) return false;
+    setApplications((items) => items.map((item) => item.id === id ? { ...item, notes } : item));
+    const { error: updateError } = await updateApplication(id, { notes });
+    if (updateError) {
+      setApplications((items) => items.map((item) => item.id === id ? previous : item));
+      setError(updateError.message || 'Unable to save candidate notes.');
+      return false;
+    }
+    return true;
+  }, [applications]);
+
+  const filteredApplications = useMemo(() => {
+    const search = filters.search.trim().toLowerCase();
+    return applications.filter((application) => {
+      const profile = Array.isArray(application.candidate_profiles)
+        ? application.candidate_profiles[0]
+        : application.candidate_profiles;
+      const name = `${profile?.firstName || ''} ${profile?.lastName || ''}`.toLowerCase();
+      const email = (profile?.email || '').toLowerCase();
+      return (filters.jobId === 'all' || application.job_id === filters.jobId)
+        && (!search || name.includes(search) || email.includes(search))
+        && (Number(application.match_score || 0) >= filters.minMatch);
+    });
+  }, [applications, filters]);
+
+  const groupedByStage = useMemo(() => Object.fromEntries(
+    PIPELINE_STAGES.map(({ id }) => [id, filteredApplications.filter((application) => application.stage === id).sort(compareByRanking)]),
+  ), [filteredApplications]);
+
+  return {
+    applications: filteredApplications,
+    allApplications: applications,
+    groupedByStage,
+    jobs,
+    filters,
+    updateFilter,
+    moveCandidate,
+    updateInterview,
+    saveNotes,
+    loading,
+    error,
+    setError,
+    announcement,
+    refetch,
+  };
+}

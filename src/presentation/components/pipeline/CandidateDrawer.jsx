@@ -1,0 +1,192 @@
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useStageHistory } from '../../../hooks/useStageHistory';
+import { useResumeFile } from '../../../hooks/useResumeFile';
+import { PIPELINE_STAGES, getPipelinePerson } from '../../../data/pipelineStages';
+
+const stageLabel = (stage) => PIPELINE_STAGES.find((item) => item.id === stage)?.label || stage || 'Unknown';
+
+function formatTimestamp(value) {
+  return value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'Date unavailable';
+}
+
+export function CandidateDrawer({ application, isDarkMode, onClose, onSaveNotes, onEditInterview }) {
+  const { history, error: historyError } = useStageHistory(application.id, application.stage_updated_at);
+  const [notes, setNotes] = useState(application.notes || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const closeButtonRef = useRef(null);
+  const person = getPipelinePerson(application);
+  const muted = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  const heading = isDarkMode ? 'text-white' : 'text-slate-900';
+  const card = isDarkMode ? 'border-white/5 bg-[#121b27]' : 'border-slate-200 bg-slate-50';
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const submittedDetails = application.applicant_details && typeof application.applicant_details === 'object'
+    ? application.applicant_details : null;
+  const submittedResume = submittedDetails?.resumeFilePath || submittedDetails?.resumeFileUrl || null;
+  const resume = useResumeFile(application.candidate_id || person.candidate.id, submittedResume);
+  const matchBreakdown = application.match_breakdown || application.match_details;
+
+  const handleSaveNotes = async () => {
+    setIsSaving(true);
+    setSaveMessage('');
+    const success = await onSaveNotes(application.id, notes);
+    setSaveMessage(success ? 'Notes saved.' : 'Unable to save notes.');
+    setIsSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
+      <button type="button" aria-label="Close candidate details" onClick={onClose} className={`absolute inset-0 ${isDarkMode ? 'bg-[#04080e]/70' : 'bg-slate-900/30'}`} />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="candidate-drawer-title"
+        className={`relative z-10 flex h-full w-full max-w-xl flex-col border-l shadow-2xl ${isDarkMode ? 'border-white/5 bg-[#0d1622]' : 'border-slate-200 bg-white'}`}
+      >
+        <header className={`flex items-center justify-between gap-4 border-b p-5 ${isDarkMode ? 'border-white/5' : 'border-slate-200'}`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#ea6036] text-sm font-bold text-white">{person.initials}</div>
+            <div className="min-w-0">
+              <h2 id="candidate-drawer-title" className={`truncate text-xl font-serif font-bold ${heading}`}>{person.name}</h2>
+              <p className={`truncate text-xs ${muted}`}>{application.job_postings?.title || 'Job application'}</p>
+            </div>
+          </div>
+          <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Close candidate details" className={`rounded-full p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ea6036] ${isDarkMode ? 'text-slate-400 hover:bg-white/10' : 'text-slate-500 hover:bg-slate-100'}`}>×</button>
+        </header>
+        <div className="flex-1 space-y-5 overflow-y-auto p-5">
+          <section className={`rounded-2xl border p-4 ${card}`}>
+            <h3 className={`mb-3 text-xs font-bold uppercase tracking-wider ${muted}`}>Candidate details</h3>
+            <dl className="space-y-2 text-sm">
+              <div className="flex gap-2"><dt className={muted}>Email</dt><dd className={heading}>{person.email ? <a href={`mailto:${person.email}`} className="break-all text-[#ea6036] hover:underline">{person.email}</a> : 'Not provided'}</dd></div>
+              <div className="flex gap-2"><dt className={muted}>Phone</dt><dd className={heading}>{person.candidate.phone ? <a href={`tel:${person.candidate.phone}`} className="text-[#ea6036] hover:underline">{person.candidate.phone}</a> : 'Not provided'}</dd></div>
+              <div className="flex gap-2"><dt className={muted}>Match</dt><dd className={`${heading} font-bold`}>{Math.round(Number(application.match_score || 0))}%</dd></div>
+              <div className="flex gap-2"><dt className={muted}>Applied</dt><dd className={heading}>{formatTimestamp(application.applied_at)}</dd></div>
+            </dl>
+            <Link to={`/messages?application=${application.id}`} className={`mt-4 mr-2 inline-flex rounded-xl border px-4 py-2 text-sm font-bold ${isDarkMode ? 'border-white/15 text-white hover:bg-white/5' : 'border-slate-300 text-slate-700 hover:bg-white'}`}>
+              Message candidate
+            </Link>
+            {resume.status === 'ready' && (
+              <button type="button" onClick={resume.openResume} disabled={resume.isOpening} className="mt-4 inline-flex rounded-xl bg-[#ea6036] px-4 py-2 text-sm font-bold text-white hover:bg-[#d8552e] disabled:cursor-wait disabled:opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea6036]">
+                {resume.isOpening ? 'Opening resume…' : 'View resume'}
+              </button>
+            )}
+            {resume.error && <p role="alert" className="mt-2 text-xs text-red-500">{resume.error}</p>}
+            {matchBreakdown && (
+              <div className={`mt-4 border-t pt-4 ${isDarkMode ? 'border-white/5' : 'border-slate-200'}`}>
+                <h4 className={`mb-2 text-xs font-bold uppercase tracking-wider ${muted}`}>Match breakdown</h4>
+                <pre className={`whitespace-pre-wrap break-words text-xs ${muted}`}>{typeof matchBreakdown === 'string' ? matchBreakdown : JSON.stringify(matchBreakdown, null, 2)}</pre>
+              </div>
+            )}
+            {resume.status === 'loading' && <p className={`mt-3 text-xs ${muted}`}>Checking for a resume…</p>}
+            {resume.status === 'none' && <p className={`mt-3 text-xs ${muted}`}>This candidate has not uploaded a resume.</p>}
+          </section>
+
+          {submittedDetails && (
+            <section className={`rounded-2xl border p-4 ${card}`}>
+              <h3 className={`mb-3 text-xs font-bold uppercase tracking-wider ${muted}`}>Information submitted with application</h3>
+              <dl className="space-y-2 text-sm">
+                {submittedDetails.fullName && <div><dt className={muted}>Full name</dt><dd className={heading}>{submittedDetails.fullName}</dd></div>}
+                {submittedDetails.email && <div><dt className={muted}>Email</dt><dd className={`${heading} break-all`}>{submittedDetails.email}</dd></div>}
+                {submittedDetails.phone && <div><dt className={muted}>Phone</dt><dd className={heading}>{submittedDetails.phone}</dd></div>}
+                {submittedDetails.location && <div><dt className={muted}>Location</dt><dd className={heading}>{submittedDetails.location}</dd></div>}
+                {Array.isArray(submittedDetails.education) && submittedDetails.education.length > 0 && (
+                  <div><dt className={muted}>Education</dt><dd className={heading}>
+                    {submittedDetails.education.map((entry, index) => (
+                      <p key={index}>{[entry.degreeLevel, entry.fieldOfStudy, entry.school, entry.yearGraduated].filter(Boolean).join(' · ')}</p>
+                    ))}
+                  </dd></div>
+                )}
+                {Array.isArray(submittedDetails.skills) && submittedDetails.skills.length > 0 && (
+                  <div><dt className={muted}>Skills</dt><dd className={heading}>{submittedDetails.skills.join(', ')}</dd></div>
+                )}
+                {submittedDetails.summary && <div><dt className={muted}>Summary</dt><dd className={heading}>{submittedDetails.summary}</dd></div>}
+                {submittedDetails.profileUrl && <div><dt className={muted}>Portfolio</dt><dd className="break-all"><a className="text-[#ea6036] hover:underline" href={submittedDetails.profileUrl} target="_blank" rel="noopener noreferrer">Open profile</a></dd></div>}
+              </dl>
+              {(submittedDetails.resumeFileName || submittedDetails.resumeFilePath) && (
+                <p className={`mt-3 text-xs ${muted}`}>Submitted resume reference: {submittedDetails.resumeFileName || submittedDetails.resumeFilePath}</p>
+              )}
+            </section>
+          )}
+
+          {(application.stage === 'interview' || application.interview_at) && (
+            <section className={`rounded-2xl border p-4 ${card}`}>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className={`text-xs font-bold uppercase tracking-wider ${muted}`}>Interview</h3>
+                {application.stage === 'interview' && onEditInterview && (
+                  <button type="button" onClick={() => onEditInterview(application)} className="text-xs font-bold text-[#ea6036] hover:underline">
+                    {application.interview_at ? 'Edit / reschedule' : 'Schedule interview'}
+                  </button>
+                )}
+              </div>
+              {application.interview_at ? (
+                <dl className="space-y-2 text-sm">
+                  <div className="flex gap-2"><dt className={muted}>When</dt><dd className={heading}>{formatTimestamp(application.interview_at)}</dd></div>
+                  {application.interview_mode && <div className="flex gap-2"><dt className={muted}>Format</dt><dd className={heading}>{application.interview_mode}</dd></div>}
+                  {application.interview_location && <div className="flex gap-2"><dt className={muted}>Where</dt><dd className={`${heading} break-all`}>{application.interview_location}</dd></div>}
+                  {application.interview_notes && <div><dt className={muted}>Message to candidate</dt><dd className={`${heading} whitespace-pre-line`}>{application.interview_notes}</dd></div>}
+                </dl>
+              ) : (
+                <p className={`text-sm ${muted}`}>No interview date set yet. The candidate can't see when to attend.</p>
+              )}
+            </section>
+          )}
+
+          {application.stage === 'rejected' && (application.rejection_reason || application.candidate_feedback) && (
+            <section className={`rounded-2xl border p-4 ${card}`}>
+              <h3 className={`mb-3 text-xs font-bold uppercase tracking-wider ${muted}`}>Rejection</h3>
+              <dl className="space-y-2 text-sm">
+                {application.rejection_reason && <div><dt className={muted}>Internal reason</dt><dd className={`${heading} whitespace-pre-line`}>{application.rejection_reason}</dd></div>}
+                {application.candidate_feedback && <div><dt className={muted}>Feedback shared with candidate</dt><dd className={`${heading} whitespace-pre-line`}>{application.candidate_feedback}</dd></div>}
+              </dl>
+            </section>
+          )}
+
+          <section className={`rounded-2xl border p-4 ${card}`}>
+            <label htmlFor="pipeline-candidate-notes" className={`mb-2 block text-xs font-bold uppercase tracking-wider ${muted}`}>Recruiter notes</label>
+            <textarea
+              id="pipeline-candidate-notes"
+              rows={4}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              className={`w-full resize-y rounded-xl border px-3 py-2 text-sm outline-none focus:border-[#ea6036] focus-visible:ring-2 focus-visible:ring-[#ea6036]/30 ${isDarkMode ? 'border-white/10 bg-[#0a121c] text-white' : 'border-slate-300 bg-white text-slate-900'}`}
+            />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span role="status" className={`text-xs ${saveMessage.includes('Unable') ? 'text-red-500' : muted}`}>{saveMessage}</span>
+              <button type="button" disabled={isSaving} onClick={handleSaveNotes} className="rounded-lg bg-[#ea6036] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#d8552e] disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea6036]">{isSaving ? 'Saving…' : 'Save notes'}</button>
+            </div>
+          </section>
+
+          <section>
+            <h3 className={`mb-3 text-xs font-bold uppercase tracking-wider ${heading}`}>Stage history</h3>
+            {historyError ? (
+              <p role="alert" className="text-sm text-red-500">Could not load stage history: {historyError}</p>
+            ) : history.length === 0 ? (
+              <p className={`text-sm ${muted}`}>No stage history recorded.</p>
+            ) : (
+              <ol className="space-y-3">
+                {history.map((item) => (
+                  <li key={item.id} className={`relative border-l-2 py-1 pl-4 ${isDarkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                    <span className={`absolute -left-[5px] top-2 h-2 w-2 rounded-full ${item.to_stage === 'rejected' ? 'bg-slate-400' : 'bg-[#ea6036]'}`} />
+                    <div className={`text-sm font-semibold ${heading}`}>{item.from_stage ? `${stageLabel(item.from_stage)} → ` : ''}{stageLabel(item.to_stage)}</div>
+                    <time className={`text-xs ${muted}`}>{formatTimestamp(item.changed_at)}</time>
+                    {item.note && <p className={`mt-1 text-xs ${muted}`}>{item.note}</p>}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        </div>
+      </aside>
+    </div>
+  );
+}

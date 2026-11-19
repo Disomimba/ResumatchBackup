@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0a131c; }
+::-webkit-scrollbar-thumb { background: #1e3044; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #2a415a; }
+
+html:not(.dark) ::-webkit-scrollbar-track { background: #f1f5f9; }
+html:not(.dark) ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+html:not(.dark) body { background-color: #f8fafc; color: #1e293b; }
+
+input[type=range].accent-slider {
+  -webkit-appearance: none;
+  background: #1e3a33;
+  height: 6px;
+  border-radius: 9999px;
+}
+input[type=range].accent-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: #e2f1e9;
+  cursor: pointer;
+}
+html:not(.dark) body {
+  background-color: #f8fafc;
+  color: #1e293b;
+  @apply font-sans;
+}
+
+html.dark body {
+  @apply font-sans;
+}
+.job-rich-editor .ql-toolbar.ql-snow { border: 0; border-bottom: 1px solid #cbd5e1; }
+.job-rich-editor .ql-container.ql-snow { border: 0; font-family: inherit; font-size: 14px; }
+.job-rich-editor .ql-editor { min-height: 140px; max-height: 230px; overflow-y: auto; }
+.job-rich-editor .job-rich-expanded .ql-editor { min-height: 280px; max-height: 60vh; }
+.job-rich-editor .ql-editor.ql-blank::before { color: #94a3b8; font-style: normal; }
+.job-rich-editor-dark .ql-toolbar.ql-snow { border-bottom-color: #334155; }
+.job-rich-editor-dark .ql-snow .ql-stroke { stroke: #cbd5e1; }
+.job-rich-editor-dark .ql-snow .ql-fill { fill: #cbd5e1; }
+.job-rich-editor-dark .ql-snow .ql-picker { color: #e2e8f0; }
+.job-rich-editor-dark .ql-toolbar button:hover, .job-rich-editor-dark .ql-toolbar button.ql-active { background: #263446; }
+.job-rich-editor-dark .ql-toolbar .ql-picker-options { background: #192838; border-color: #334155; }
+.job-rich-editor .ql-toolbar .ql-picker.ql-size { width: 66px; }
+.job-rich-editor .ql-toolbar .ql-picker.ql-size .ql-picker-label::before,
+.job-rich-editor .ql-toolbar .ql-picker.ql-size .ql-picker-item::before { content: attr(data-value); }
+.job-rich-editor .ql-toolbar .ql-picker.ql-size .ql-picker-label:not([data-value])::before { content: 'Size'; }
+.job-rich-text.ql-editor { padding: 0; font-size: 14px; line-height: 1.65; }
+.job-rich-text.ql-editor h1, .job-rich-text.ql-editor h2, .job-rich-text.ql-editor h3 { font-weight: 700; }
+.job-rich-text.ql-editor a { color: #ea6036; text-decoration: underline; }
